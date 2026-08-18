@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Noxtua — Architecture &amp; QA Plan</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/3.4.3/tailwind.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ground:#0A1315; --panel:#0F1D20; --panel2:#132428; --stroke:#23393E;
+    --chalk:#E8EDEB; --muted:#7E9A9E; --dim:#4E6C71;
+    --sky:#7FB0E8; --mint:#5FD3B4; --violet:#C08BE8; --sand:#C9B27A;
+    --amber:#E8A33D; --red:#D97070;
+  }
+  *{scroll-behavior:smooth}
+  body{background:var(--ground);color:var(--chalk);font-family:'IBM Plex Sans',sans-serif;}
+  .display{font-family:'Space Grotesk',sans-serif}
+  .mono{font-family:'IBM Plex Mono',monospace}
+  .grid-bg{background-image:linear-gradient(rgba(35,57,62,.3) 1px,transparent 1px),linear-gradient(90deg,rgba(35,57,62,.3) 1px,transparent 1px);background-size:44px 44px}
+  svg text{font-family:'IBM Plex Mono',monospace}
+  .n-title{font-family:'Space Grotesk',sans-serif;font-weight:600}
+
+  .flow{stroke-dasharray:6 10;animation:dash 1.5s linear infinite}
+  @keyframes dash{to{stroke-dashoffset:-32}}
+
+  /* scroll reveal */
+  .rv{opacity:0;transform:translateY(18px);transition:opacity .6s ease,transform .6s ease}
+  .rv.in{opacity:1;transform:none}
+
+  /* rail */
+  .rail a{color:var(--dim);border-left:2px solid var(--stroke);transition:all .2s}
+  .rail a:hover{color:var(--muted)}
+  .rail a.act{color:var(--mint);border-color:var(--mint)}
+
+  .tab{transition:all .18s}
+  .tab[aria-pressed="true"]{background:var(--panel2);border-color:var(--mint);color:var(--mint)}
+
+  /* coverage heatmap (table-based; avoids aspect-ratio collapse in some browsers) */
+  .heatmap-table{
+    width:100%;
+    border-collapse:separate;
+    border-spacing:6px;
+    table-layout:fixed;
+  }
+  .heatmap-table th,
+  .heatmap-table td{padding:0;vertical-align:middle}
+  .heatmap-table thead th{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:9px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--muted);
+    text-align:center;
+    padding-bottom:6px;
+  }
+  .heatmap-table th.row-h{
+    width:170px;
+    text-align:left;
+    padding-right:12px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    letter-spacing:.02em;
+    color:var(--chalk);
+    white-space:nowrap;
+  }
+  .heat-cell{
+    width:clamp(14px,2.1vw,22px);
+    height:clamp(14px,2.1vw,22px);
+    border-radius:3px;
+    display:block;
+  }
+  .heat-total-lbl{
+    padding-top:6px;
+    color:var(--red);
+  }
+  .heat-total{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    text-align:center;
+    padding-top:6px;
+  }
+
+  /* gaps (diagrammatic swimlanes by severity) */
+  .gap-board{display:grid;gap:12px}
+  @media (min-width: 1024px){.gap-board{grid-template-columns:repeat(3,1fr)}}
+  .gap-col{border:1px solid var(--stroke);background:var(--panel);border-radius:14px;overflow:hidden}
+  .gap-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #23393E60}
+  .gap-head .sev{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase}
+  .gap-head .count{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted)}
+  .gap-list{padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+  .gap-item{border:1px solid #23393E80;background:var(--ground);border-radius:12px;padding:12px}
+  .gap-title{display:flex;align-items:start;justify-content:space-between;gap:10px;margin-bottom:6px}
+  .gap-pill{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;padding:5px 8px;border-radius:999px;border:1px solid #23393E90;color:var(--muted);white-space:nowrap}
+  .gap-desc{font-size:12.5px;line-height:1.55;color:var(--muted)}
+
+  /* ownership + gating mini-diagrams */
+  .own-map{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px}
+  .own-node{padding:10px 14px;border-radius:999px;border:1px solid var(--stroke);background:#0A1315;min-width:170px;text-align:center}
+  .own-node .k{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+  .own-node .v{font-family:'Space Grotesk',sans-serif;font-weight:600;margin-top:2px}
+  .own-arrow{font-family:'IBM Plex Mono',monospace;color:var(--dim);opacity:.9}
+
+  .gate-map{display:grid;gap:10px}
+  @media (min-width: 768px){.gate-map{grid-template-columns:1fr 1fr;gap:14px}}
+  .gate-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center}
+  .gate-node{padding:10px 14px;border-radius:12px;border:1px solid var(--stroke);background:#0A1315;min-width:190px;text-align:center}
+  .gate-node .k{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+  .gate-node .v{font-size:13px;margin-top:2px;color:var(--chalk)}
+
+  /* ux states as a stepper */
+  .state-stepper{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+  .state-step{position:relative;border-radius:12px;border:1px solid var(--stroke);background:#0A1315;padding:12px 12px 12px 40px}
+  .state-step:before{content:"";position:absolute;left:14px;top:14px;width:14px;height:14px;border-radius:999px;border:1px solid var(--stroke);background:transparent}
+  .state-step.done{border-color:#5FD3B440}
+  .state-step.done:before{background:var(--mint);border-color:#5FD3B4}
+  .state-step.todo{border-color:#D9707040}
+  .state-step.todo:before{background:transparent;border-color:var(--red)}
+  .state-step .t{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--chalk)}
+  .state-step .s{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.16em;text-transform:uppercase;margin-top:3px}
+  .state-step.done .s{color:var(--mint)}
+  .state-step.todo .s{color:var(--red)}
+
+  @media (prefers-reduced-motion:reduce){.flow{animation:none}.rv{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+
+<!-- ══════════ SIDE RAIL ══════════ -->
+<nav class="rail hidden xl:flex flex-col gap-0 fixed left-8 top-1/2 -translate-y-1/2 z-40 mono text-[10px] tracking-wider uppercase">
+  <a href="#hero"    class="pl-3 py-2">findings</a>
+  <a href="#arch"    class="pl-3 py-2">architecture</a>
+  <a href="#gate"    class="pl-3 py-2">the gate</a>
+  <a href="#cover"   class="pl-3 py-2">coverage</a>
+  <a href="#own"     class="pl-3 py-2">ownership</a>
+  <a href="#risk"    class="pl-3 py-2">risk tiers</a>
+  <a href="#ai"      class="pl-3 py-2">ai gating</a>
+  <a href="#ux"      class="pl-3 py-2">ux &amp; a11y</a>
+  <a href="#maint"   class="pl-3 py-2">maintenance</a>
+  <a href="#plan"    class="pl-3 py-2">the plan</a>
+</nav>
+
+<!-- ══════════ HERO ══════════ -->
+<header id="hero" class="border-b grid-bg" style="border-color:var(--stroke)">
+  <div class="max-w-[1180px] mx-auto px-6 pt-20 pb-16">
+    <p class="mono text-[11px] tracking-[.3em] uppercase" style="color:var(--amber)">Noxtua &middot; QA Strategy</p>
+    <h1 class="display text-4xl md:text-6xl font-bold mt-4 leading-[1.03] max-w-4xl">
+      Where quality lives today,<br>and where it needs to live next.
+    </h1>
+    <p class="text-base mt-6 max-w-2xl leading-relaxed" style="color:var(--muted)">
+      Six automated journeys, a layered QA model already drafted by the team, and a maintenance
+      phase arriving soon. This is what holds, what doesn't, and the order to fix it in.
+    </p>
+
+    <!-- three findings -->
+    <div class="grid md:grid-cols-3 gap-4 mt-14">
+      <div class="rv rounded-xl border p-6" style="border-color:#D9707040;background:var(--panel)">
+        <div class="flex items-baseline justify-between mb-3">
+          <span class="display text-4xl font-bold" style="color:var(--red)">01</span>
+          <span class="mono text-[9px] px-2 py-1 rounded border uppercase" style="color:var(--red);border-color:#D9707040">verify first</span>
+        </div>
+        <h3 class="display font-semibold text-lg leading-snug">The merge gate may not be a gate</h3>
+        <p class="text-[13px] mt-2 leading-relaxed" style="color:var(--muted)">
+          Journeys are believed to block merges. Confluence says E2E is not a required check.
+          Believing in a net that isn't wired up is worse than having none.
+        </p>
+      </div>
+      <div class="rv rounded-xl border p-6" style="border-color:#E8A33D40;background:var(--panel)">
+        <div class="flex items-baseline justify-between mb-3">
+          <span class="display text-4xl font-bold" style="color:var(--amber)">02</span>
+          <span class="mono text-[9px] px-2 py-1 rounded border uppercase" style="color:var(--amber);border-color:#E8A33D40">no R1 coverage</span>
+        </div>
+        <h3 class="display font-semibold text-lg leading-snug">Tenant isolation is untested</h3>
+        <p class="text-[13px] mt-2 leading-relaxed" style="color:var(--muted)">
+          Multi-tenant, per-tenant IdP, and no journey asserts tenant A cannot reach tenant B's
+          documents. That's a confidentiality incident, not a bug.
+        </p>
+      </div>
+      <div class="rv rounded-xl border p-6" style="border-color:#7FB0E840;background:var(--panel)">
+        <div class="flex items-baseline justify-between mb-3">
+          <span class="display text-4xl font-bold" style="color:var(--sky)">03</span>
+          <span class="mono text-[9px] px-2 py-1 rounded border uppercase" style="color:var(--sky);border-color:#7FB0E840">cheapest win</span>
+        </div>
+        <h3 class="display font-semibold text-lg leading-snug">No UX, a11y, or visual checks exist</h3>
+        <p class="text-[13px] mt-2 leading-relaxed" style="color:var(--muted)">
+          With BSI work and public-sector customers, BITV&nbsp;2.0 conformance is plausibly
+          contractual. The suite that would host these checks already exists.
+        </p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════ ARCHITECTURE ══════════ -->
+<section id="arch" class="max-w-[1180px] mx-auto px-6 py-20">
+  <div class="flex items-end justify-between flex-wrap gap-4 mb-8">
+    <div>
+      <p class="mono text-[10px] tracking-[.25em] uppercase" style="color:var(--dim)">Section 01</p>
+      <h2 class="display text-3xl font-bold mt-2">What we are testing</h2>
+      <p class="text-sm mt-2 max-w-xl" style="color:var(--muted)">Container topology. Amber links carry encrypted legal content; the GPU fleet sits deliberately outside the cluster.</p>
+    </div>
+    <div class="flex gap-4 mono text-[10px]" style="color:var(--muted)">
+      <span class="flex items-center gap-2"><span class="w-5 h-[2px]" style="background:var(--amber)"></span>encrypted</span>
+      <span class="flex items-center gap-2"><span class="w-5 h-[2px]" style="background:#4E6C71"></span>control</span>
+    </div>
+  </div>
+
+  <div class="rv rounded-xl border grid-bg overflow-hidden" style="border-color:var(--stroke)">
+    <svg viewBox="0 0 1200 620" class="w-full h-auto block">
+      <defs>
+        <marker id="a1" markerWidth="8" markerHeight="8" refX="6.5" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#4E6C71"/></marker>
+        <marker id="a2" markerWidth="8" markerHeight="8" refX="6.5" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#E8A33D"/></marker>
+        <filter id="gl" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      </defs>
+
+      <!-- zones -->
+      <rect x="30" y="95" width="1140" height="405" rx="12" fill="none" stroke="#2C4A50" stroke-width="1.4" stroke-dasharray="8 6"/>
+      <rect x="44" y="84" width="300" height="22" rx="5" fill="#0A1315"/>
+      <text x="56" y="99" font-size="10.5" fill="#5F8288" letter-spacing="1.3">KUBERNETES · ISTIO MESH · mTLS</text>
+
+      <rect x="690" y="520" width="470" height="80" rx="11" fill="none" stroke="#3A2E4A" stroke-width="1.4" stroke-dasharray="8 6"/>
+      <rect x="704" y="509" width="250" height="22" rx="5" fill="#0A1315"/>
+      <text x="716" y="524" font-size="10.5" fill="#8A6FA8" letter-spacing="1.3">BARE METAL · BERLIN/MUNICH</text>
+
+      <!-- links -->
+      <g fill="none" stroke-width="1.5">
+        <path d="M440,70 C440,95 600,92 600,110" stroke="#4E6C71" marker-end="url(#a1)"/>
+        <path d="M660,70 C660,95 600,92 600,110" stroke="#4E6C71" marker-end="url(#a1)"/>
+        <path d="M600,170 L600,210" stroke="#E8A33D" stroke-width="2" marker-end="url(#a2)"/>
+        <path d="M600,170 L600,210" stroke="#E8A33D" stroke-width="2" class="flow" opacity=".5"/>
+
+        <path d="M450,275 C450,300 160,296 160,320" stroke="#4E6C71" marker-end="url(#a1)"/>
+        <path d="M520,275 C520,300 380,296 380,320" stroke="#4E6C71" marker-end="url(#a1)"/>
+        <path d="M600,275 L600,320" stroke="#E8A33D" stroke-width="2" marker-end="url(#a2)"/>
+        <path d="M600,275 L600,320" stroke="#E8A33D" stroke-width="2" class="flow" opacity=".5"/>
+        <path d="M680,275 C680,300 820,296 820,320" stroke="#E8A33D" stroke-width="2" marker-end="url(#a2)"/>
+        <path d="M680,275 C680,300 820,296 820,320" stroke="#E8A33D" stroke-width="2" class="flow" opacity=".5"/>
+        <path d="M750,275 C750,300 1040,296 1040,320" stroke="#E8A33D" stroke-width="2" marker-end="url(#a2)"/>
+        <path d="M750,275 C750,300 1040,296 1040,320" stroke="#E8A33D" stroke-width="2" class="flow" opacity=".5"/>
+
+        <path d="M160,385 L160,430" stroke="#4E6C71" marker-end="url(#a1)"/>
+        <path d="M380,385 L380,430" stroke="#4E6C71" marker-end="url(#a1)"/>
+        <path d="M600,385 L600,430" stroke="#E8A33D" stroke-width="2" marker-end="url(#a2)"/>
+        <path d="M830,385 L830,430" stroke="#4E6C71" marker-end="url(#a1)"/>
+        <path d="M1040,385 L1040,430" stroke="#4E6C71" marker-end="url(#a1)"/>
+
+        <path d="M770,385 C740,450 730,490 760,520" stroke="#8A6FA8" stroke-dasharray="4 5" marker-end="url(#a1)"/>
+        <path d="M1140,352 C1185,352 1188,450 1120,520" stroke="#8A6FA8" stroke-dasharray="4 5" marker-end="url(#a1)"/>
+      </g>
+
+      <!-- packets -->
+      <circle r="3.5" fill="#E8A33D" filter="url(#gl)"><animateMotion dur="2.2s" repeatCount="indefinite" path="M600,170 L600,210"/></circle>
+      <circle r="3.5" fill="#E8A33D" filter="url(#gl)"><animateMotion dur="2.8s" repeatCount="indefinite" begin=".5s" path="M750,275 C750,300 1040,296 1040,320"/></circle>
+      <circle r="3.5" fill="#E8A33D" filter="url(#gl)"><animateMotion dur="2.6s" repeatCount="indefinite" begin="1.2s" path="M680,275 C680,300 820,296 820,320"/></circle>
+
+      <g id="an"></g>
+    </svg>
+  </div>
+</section>
+
+<!-- ══════════ THE GATE ══════════ -->
+<section id="gate" class="border-y" style="border-color:var(--stroke);background:var(--panel)">
+  <div class="max-w-[1180px] mx-auto px-6 py-20">
+    <p class="mono text-[10px] tracking-[.25em] uppercase" style="color:var(--dim)">Section 02</p>
+    <h2 class="display text-3xl font-bold mt-2">The gate, believed vs documented</h2>
+    <p class="text-sm mt-2 max-w-2xl" style="color:var(--muted)">Resolve this before touching anything else in the plan. Everything downstream assumes an answer.</p>
+
+    <div class="grid lg:grid-cols-2 gap-5 mt-10">
+      <!-- believed -->
+      <div class="rv rounded-xl border p-6" style="border-color:#5FD3B440;background:var(--ground)">
+        <p class="mono text-[10px] uppercase tracking-widest mb-5" style="color:var(--mint)">◆ Believed — from the journey review</p>
+        <div class="space-y-3" id="believed"></div>
+      </div>
+      <!-- documented -->
+      <div class="rv rounded-xl border p-6" style="border-color:#D9707040;background:var(--ground)">
+        <p class="mono text-[10px] uppercase tracking-widest mb-5" style="color:var(--red)">◆ Documented — Quality Gates page</p>
+        <div class="space-y-3" id="documented"></div>
+      </div>
+    </div>
+
+    <div class="rv mt-6 rounded-xl border p-5 flex gap-4 items-start" style="border-color:#E8A33D40;background:#E8A33D0A">
+      <span class="display text-2xl" style="color:var(--amber)">!</span>
+      <p class="text-sm leading-relaxed" style="color:#E5D3B0">
+        The branch ruleset requires only <span class="mono text-[12px]">build · fmt-check · lint · typecheck · unit</span>.
+        If that is still current, a red E2E run is mergeable and six journeys are advisory, not protective.
+        <span style="color:var(--chalk)">One inspection of the ruleset settles it.</span>
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ COVERAGE ══════════ -->
+<section id="cover" class="max-w-[1180px] mx-auto px-6 py-20">
+  <p class="mono text-[10px] tracking-[.25em] uppercase" style="color:var(--dim)">Section 03</p>
+  <h2 class="display text-3xl font-bold mt-2">Six journeys against the architecture</h2>
+  <p class="text-sm mt-2 max-w-2xl" style="color:var(--muted)">Filled cells are exercised by an existing journey. The columns that stay dark are the story.</p>
+
+  <div class="rv mt-10 rounded-xl border overflow-x-auto" style="border-color:var(--stroke);background:var(--panel)">
+    <div id="heat" class="p-6 min-w-[720px]"></div>
+  </div>
+
+  <h3 class="display text-xl font-semibold mt-14 mb-5">What no journey touches</h3>
+  <div id="gaps"></div>
+</section>
+
+<!-- ══════════ OWNERSHIP ══════════ -->
+<section id="own" class="border-y grid-bg" style="border-color:var(--stroke)">
+  <div class="max-w-[1180px] mx-auto px-6 py-20">
+    <p class="mono text-[10px] tracking-[.25em] uppercase" style="color:var(--dim)">Section 04</p>
+    <h2 class="display text-3xl font-bold mt-2">QA owns the rails. Dev drives on them.</h2>
+    <p class="text-sm mt-2 max-w-2xl" style="color:var(--muted)">
+      Your team asked devs to write "at least one end-user flow" while QA runs the automation.
+      Two groups writing one suite becomes nobody's suite — unless the split is explicit.
+    </p>
+
+    <div class="rv mt-10 rounded-xl border p-6" style="border-color:var(--stroke);background:var(--panel)">
+      <div class="own-map">
+        <div class="own-node" style="border-color:#5FD3B440">
+          <div class="k" style="color:var(--mint)">QA owns</div>
+          <div class="v">Framework &amp; rails</div>
+        </div>
+        <div class="own-arrow">→ handoff →</div>
+        <div class="own-node">
+          <div class="k">Shared surface</div>
+          <div class="v">One journey suite</div>
+        </div>
+        <div class="own-arrow">→</div>
+        <div class="own-node" style="border-color:#7FB0E840">
+          <div class="k" style="color:var(--sky)">Dev owns</div>
+          <div class="v">Adding coverage</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-[1fr_auto_1fr] gap-6 items-stretch mt-8">
+      <div class="rv rounded-xl border p-6" style="border-color:#5FD3B440;background:var(--panel)">
+        <p class="mono text-[10px] uppercase tracking-widest mb-1" style="color:var(--mint)">QA owns</p>
+        <p class="display text-lg font-semibold mb-4">The rails</p>
+        <ul class="space-y-2.5 text-[13px]" id="qaOwns"></ul>
+      </div>
+
+      <div class="hidden lg:flex flex-col items-center justify-center px-2">
+        <div class="w-[2px] flex-1" style="background:linear-gradient(to bottom,transparent,var(--stroke),transparent)"></div>
+        <span class="mono text-[9px] py-3 uppercase tracking-widest" style="color:var(--dim)">handoff</span>
+        <div class="w-[2px] flex-1" style="background:linear-gradient(to bottom,transparent,var(--stroke),transparent)"></div>
+      </div>
+
+      <div class="rv rounded-xl border p-6" style="border-color:#7FB0E840;background:var(--panel)">
+        <p class="mono text-[10px] uppercase tracking-widest mb-1" style="color:var(--sky)">Dev owns</p>
+        <p class="display text-lg font-semibold mb-4">Driving on them</p>
+        <ul class="space-y-2.5 text-[13px]" id="devOwns"></ul>
+      </div>
+    </div>
+
+    <div class="rv mt-6 rounded-xl border p-5" style="border-color:var(--stroke);background:var(--panel)">
+      <p class="text-sm leading-relaxed" style="color:var(--muted)">
+        <span class="mono text-[11px] uppercase tracking-wider" style="color:var(--amber)">Load-bearing condition &nbsp;→&nbsp;</span>
+        a dev must be able to add a happy-path journey test in <span style="color:var(--chalk)">under 30 minutes without learning Playwright</span>.
+        That means the POM library and <span class="mono text-[12px]">docs/writing-tests.md</span> come first.
+        If that bar can't be met, invert it: dev writes the Given/When/Then, QA implements.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ RISK TIERS ══════════ -->
+<section id="risk" class="max-w-[1180px] mx-auto px-6 py-20">
+  <p class="mono text-[10px] tracking-[.25em] uppercase" style="color:var(--dim)">Section 05</p>
+  <h2 class="display text-3xl font-bold mt-2">Risk tiers drive everything else</h2>
+  <p class="text-sm mt-2 max-w-2xl" style="color:var(--muted)">
+    One tier per feature, set at ticket creation. Tier decides required layers, which CI lane the test lands in,
+    and later — the maintenance switch.
+  </p>
+  <div class="mt-10 space-y-4" id="tiers"></div>
+
+  <div class="rv mt-8 rounded-xl border p-5 flex gap-4" style="border-color:#D9707040;background:#D970700A">
+    <span class="display text-xl" style="color:var(--red)">→</span>
+    <p class="text-sm leading-relaxed" style="color:#E5C0C0">
+      Mapping the current six: all are <span class="mono">R2</span>.
+      <span style="color:var(--chalk)">There is no R1 coverage in the suite at all.</span>
+      Tenant isolation and authentication should become journeys 7 and 8 before any other coverage work.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════ AI GATING ══════════ -->
+<section id="ai" class="border-y" style="border-color:var(--stroke);background:var(--panel)">
+  <div class="max-w-[1180px] mx-auto px-6 py-20">
+    <p class="mono text-[10px] tracking-[.25em] uppercase" style="color:var(--dim)">Section 06</p>
+    <h2 class="display text-3xl font-bold mt-2">Gate the contract, not the answer</h2>
+    <p class="text-sm mt-2 max-w-2xl" style="color:var(--muted)">
+      If "verify the assistant response" asserts on response text, that gate will flake — and a flaky gate gets
+      ignored, then disabled. Split deterministic structure from probabilistic quality.
+    </p>
+
+    <div class="rv mt-10 rounded-xl border p-6" style="border-color:var(--stroke);background:var(--ground)">
+      <div class="gate-map">
+        <div class="gate-row">
+          <div class="gate-node" style="border-color:#5FD3B440">
+            <div class="k" style="color:var(--mint)">Deterministic</div>
+            <div class="v">Gate inputs</div>
+          </div>
+          <div class="own-arrow">→</div>
+          <div class="gate-node" style="border-color:#E8A33D40">
+            <div class="k" style="color:var(--amber)">Merge gate</div>
+            <div class="v">Block merges</div>
+          </div>
+        </div>
+        <div class="gate-row">
+          <div class="gate-node" style="border-color:#C08BE840">
+            <div class="k" style="color:var(--violet)">Probabilistic</div>
+            <div class="v">Signals only</div>
+          </div>
+          <div class="own-arrow">→</div>
+          <div class="gate-node" style="border-color:#23393E">
+            <div class="k">Report-only</div>
+            <div class="v">Human decision</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-5 mt-10">
+      <div class="rv rounded-xl border p-6" style="border-color:#5FD3B440;background:var(--ground)">
+        <p class="mono text-[10px] uppercase tracking-widest mb-4" style="color:var(--mint)">Deterministic → safe to block merges</p>
+        <ul class="space-y-2.5 text-[13px]" id="det"></ul>
+      </div>
+      <div class="rv rounded-xl border p-6" style="border-color:#C08BE840;background:var(--ground)">
+        <p class="mono text-[10px] uppercase tracking-widest mb-4" style="color:var(--violet)">Probabilistic → never block a merge</p>
+        <ul class="space-y-2.5 text-[13px]" id="prob"></ul>
+      </div>
+    </div>
+
+    <p class="rv text-sm mt-6 leading-relaxed" style="color:var(--muted)">
+      <span class="mono text-[11px] uppercase tracking-wider" style="color:var(--amber)">Flake policy &nbsp;→&nbsp;</span>
+      any gating test failing ≥2 in 10 runs is quarantined within 24h, with a Jira-backed skip and a named owner.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════ UX & A11Y ══════════ -->
+<section id="ux" class="max-w-[1180px] mx-auto px-6 py-20">
+  <p class="mono text-[10px] tracking-[.25em] uppercase" style="color:var(--dim)">Section 07</p>
+  <h2 class="display text-3xl font-bold mt-2">The gap nobody is covering</h2>
+
+  <div class="grid md:grid-cols-3 gap-4 mt-10">
+    <div class="rv rounded-xl border p-6" style="border-color:var(--stroke);background:var(--panel)">
+      <p class="mono text-[10px] uppercase tracking-widest" style="color:var(--sky)">Accessibility</p>
+      <h3 class="display text-lg font-semibold mt-2 mb-3">Possibly contractual</h3>
+      <p class="text-[13px] leading-relaxed" style="color:var(--muted)">
+        BSI work plus public-sector legal customers point at BITV&nbsp;2.0 / EN&nbsp;301&nbsp;549 / WCAG&nbsp;2.1&nbsp;AA.
+        If procurement asks for a VPAT and there's no evidence, that's a deal-blocker.
+        <span style="color:var(--chalk)">Start: add axe-core to the journeys that already visit those states.</span>
+      </p>
+    </div>
+    <div class="rv rounded-xl border p-6" style="border-color:var(--stroke);background:var(--panel)">
+      <p class="mono text-[10px] uppercase tracking-widest" style="color:var(--sand)">Visual regression</p>
+      <h3 class="display text-lg font-semibold mt-2 mb-3">The value is in the render</h3>
+      <p class="text-[13px] leading-relaxed" style="color:var(--muted)">
+        Citation markers, bento expansion, side-by-side viewer, editor pane, matrix columns.
+        A CSS change breaks all of these without failing one functional assertion.
+        <span style="color:var(--chalk)">15–20 snapshots, nightly, mask the AI response body.</span>
+      </p>
+    </div>
+    <div class="rv rounded-xl border p-6" style="border-color:var(--stroke);background:var(--panel)">
+      <p class="mono text-[10px] uppercase tracking-widest" style="color:var(--violet)">UX states</p>
+      <h3 class="display text-lg font-semibold mt-2 mb-3">Chat Journey is the template</h3>
+      <p class="text-[13px] leading-relaxed" style="color:var(--muted)">
+        It already tests empty-title block, over-long truncation, cancel-keeps-original, Enter-to-rename.
+        That's real UX rigour. <span style="color:var(--chalk)">Apply it to the other five.</span>
+      </p>
+    </div>
+  </div>
+
+  <div class="rv mt-6 rounded-xl border p-6" style="border-color:var(--stroke);background:var(--panel)">
+    <p class="mono text-[10px] uppercase tracking-widest mb-5" style="color:var(--muted)">Required UX states per R1/R2 feature</p>
+    <div id="states"></div>
+  </div>
+</section>
+
+<!-- ══════════ MAINTENANCE ══════════ -->
+<section id="maint" class="border-y grid-bg" style="border-color:var(--stroke)">
+  <div class="max-w-[1180px] mx-auto px-6 py-20">
+    <p class="mono text-[10px] tracking-[.25em] uppercase" style="color:var(--dim)">Section 08</p>
+    <h2 class="display text-3xl font-bold mt-2">Make the switch a config change</h2>
+    <p class="text-sm mt-2 max-w-2xl" style="color:var(--muted)">
+      Maintenance arriving soon is a design constraint, not a later problem. Tag tests with risk tier now,
+      define gates as tag queries, and entering maintenance is one line — not a CI rewrite across four repos
+      at the moment you have least capacity.
+    </p>
+
+    <!-- toggle -->
+    <div class="flex gap-2 mt-10">
+      <button data-p="active" aria-pressed="true" class="tab mono text-xs px-5 py-2.5 rounded border" style="border-color:var(--stroke);color:var(--muted)">active development</button>
+      <button data-p="maintenance" aria-pressed="false" class="tab mono text-xs px-5 py-2.5 rounded border" style="border-color:var(--stroke);color:var(--muted)">maintenance</button>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-5 mt-6">
+      <!-- profile -->
+      <div class="rounded-xl border p-6" style="border-color:var(--stroke);background:#07100F">
+        <p class="mono text-[10px] uppercase tracking-widest mb-4" style="color:var(--mint)">profiles.yaml</p>
+        <pre class="mono text-[12px] leading-relaxed overflow-x-auto" id="prof" style="color:var(--chalk)"></pre>
+      </div>
+      <!-- deltas -->
+      <div class="rounded-xl border p-6" style="border-color:var(--stroke);background:var(--panel)">
+        <p class="mono text-[10px] uppercase tracking-widest mb-4" style="color:var(--muted)">what shifts</p>
+        <div class="space-y-3 text-[13px]" id="deltas"></div>
+      </div>
+    </div>
+
+    <h3 class="display text-xl font-semibold mt-14 mb-5">Do these before maintenance starts, not after</h3>
+    <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4" id="prep"></div>
+  </div>
+</section>
+
+<!-- ══════════ PLAN ══════════ -->
+<section id="plan" class="max-w-[1180px] mx-auto px-6 py-20">
+  <p class="mono text-[10px] tracking-[.25em] uppercase" style="color:var(--dim)">Section 09</p>
+  <h2 class="display text-3xl font-bold mt-2">The plan, in order</h2>
+  <p class="text-sm mt-2 max-w-2xl" style="color:var(--muted)">Sequenced by dependency, not by appetite. Phase 0 adds no new tests and is the highest-value work in the document.</p>
+
+  <div class="mt-12 space-y-0" id="phases"></div>
+
+  <!-- metrics -->
+  <h3 class="display text-xl font-semibold mt-20 mb-2">Metrics that drive a decision</h3>
+  <p class="text-sm mb-6" style="color:var(--muted)">Deliberately excluding code-coverage percentage — it rewards testing trivial code.</p>
+  <div class="rounded-xl border overflow-x-auto" style="border-color:var(--stroke)">
+    <table class="w-full text-[13px] min-w-[640px]">
+      <thead class="mono text-[10px] uppercase tracking-wider" style="background:var(--panel);color:var(--muted)">
+        <tr><th class="text-left px-5 py-3">Metric</th><th class="text-left px-5 py-3">Target</th><th class="text-left px-5 py-3">Decision it informs</th></tr>
+      </thead>
+      <tbody id="metrics"></tbody>
+    </table>
+  </div>
+
+  <!-- open questions -->
+  <h3 class="display text-xl font-semibold mt-20 mb-2">Open questions</h3>
+  <p class="text-sm mb-6" style="color:var(--muted)">Unresolvable from Confluence and Jira alone — no GitHub access in this session.</p>
+  <ol class="space-y-2.5 text-[13px]" id="oq"></ol>
+</section>
+
+<footer class="border-t py-8 text-center mono text-[10px] tracking-wider" style="border-color:var(--stroke);color:var(--dim)">
+  BUILDS ON THE QA TEAM'S TRACEABILITY DRAFT · SOURCES: CONFLUENCE HISOLUTION / M2D + JIRA ALL-5475 · GITHUB NOT CONNECTED
+</footer>
+
+<script>
+/* ─── architecture node labels ─── */
+const AN=[
+  [340,20,200,50,'#7FB0E8','Browser','app.noxtua.com'],
+  [560,20,200,50,'#7FB0E8','Word Add-in','Office.js webview'],
+  [430,110,340,60,'#7FB0E8','Frontend','TypeScript · React'],
+  [400,210,400,65,'#5FD3B4','Coordinator Service','Rust · Tokio'],
+  [60,320,200,65,'#5FD3B4','Authenticator','OAuth / SSO'],
+  [280,320,200,65,'#5FD3B4','Tenant Manager','Python'],
+  [500,320,200,65,'#C9B27A','Session Store','🔒 encrypted'],
+  [720,320,200,65,'#C08BE8','Text Extractor','dots-ocr'],
+  [940,320,200,65,'#C08BE8','AI Puppy','FastAPI · agentic RAG'],
+  [80,430,160,50,'#C9B27A','Keycloak',''],
+  [300,430,160,50,'#C9B27A','PostgreSQL',''],
+  [520,430,160,50,'#C9B27A','Redis / LECS',''],
+  [750,430,160,50,'#C9B27A','Vault',''],
+  [960,430,160,50,'#C9B27A','Elasticsearch',''],
+  [700,530,450,60,'#C08BE8','GPU Fleet','vLLM / SGLang · embeddings · OCR · Model Store']
+];
+const NS='http://www.w3.org/2000/svg',svgEl=(t,a)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e};
+const an=document.getElementById('an');
+AN.forEach(([x,y,w,h,c,t,s])=>{
+  an.appendChild(svgEl('rect',{x,y,width:w,height:h,rx:8,fill:'#0F1D20',stroke:c,'stroke-width':1.3}));
+  an.appendChild(svgEl('rect',{x,y,width:w,height:2.5,rx:1.2,fill:c}));
+  const tt=svgEl('text',{x:x+w/2,y:y+(s?h/2+1:h/2+4),'text-anchor':'middle','font-size':13,fill:'#E8EDEB',class:'n-title'});
+  tt.textContent=t;an.appendChild(tt);
+  if(s){const ss=svgEl('text',{x:x+w/2,y:y+h/2+16,'text-anchor':'middle','font-size':9.5,fill:'#7E9A9E'});ss.textContent=s;an.appendChild(ss)}
+});
+
+/* ─── gate comparison ─── */
+const bel=[['PR opened','journeys run','ok'],['Journey fails','merge blocked','ok'],['Merge','auto-deploy to dev','ok'],['Promotion','Test → Prod','ok']];
+const doc=[['PR opened','journeys run','ok'],['Required checks','build · fmt · lint · typecheck · unit','warn'],['Journey fails','still mergeable','bad'],['Release tag','builds, deploys, runs zero tests','bad']];
+const clr={ok:'#5FD3B4',warn:'#E8A33D',bad:'#D97070'};
+const row=(a)=>a.map(([k,v,s])=>`<div class="flex items-center gap-3">
+  <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background:${clr[s]}"></span>
+  <span class="mono text-[11px] w-32 shrink-0" style="color:var(--muted)">${k}</span>
+  <span class="text-[13px]" style="color:${s==='ok'?'var(--chalk)':clr[s]}">${v}</span></div>`).join('');
+document.getElementById('believed').innerHTML=row(bel);
+document.getElementById('documented').innerHTML=row(doc);
+
+/* ─── coverage heatmap ─── */
+const cols=['Frontend','Coordinator','Session/Redis','Text Extract','AI Puppy','Elastic','Auth','Tenant Mgr'];
+const rows=[
+  ['Chat',            [1,1,1,0,1,0,0,0]],
+  ['Citations',       [1,1,1,0,1,1,0,0]],
+  ['Document Citations',[1,1,1,1,1,1,0,0]],
+  ['Editor',          [1,1,1,0,1,0,0,0]],
+  ['Matrix',          [1,1,1,0,1,0,0,0]],
+  ['Template',        [1,1,1,0,1,0,0,0]]
+];
+
+let h=`<table class="heatmap-table" aria-label="Journey coverage heatmap">
+  <thead>
+    <tr>
+      <th></th>
+      ${cols.map(c=>`<th><div class="leading-tight">${c}</div></th>`).join('')}
+    </tr>
+  </thead>
+  <tbody>
+    ${rows.map(([name,vals])=>`
+      <tr>
+        <th scope="row" class="row-h">${name}</th>
+        ${vals.map(x=>`
+          <td>
+            <span class="heat-cell" style="background:${x?'#5FD3B4':'#16262A'};${x?'':'border:1px solid #23393E'}"></span>
+          </td>`).join('')}
+      </tr>`).join('')}
+  </tbody>
+  <tfoot>
+    <tr>
+      <th scope="row" class="row-h heat-total-lbl">coverage total</th>
+      ${cols.map((c,i)=>{const n=rows.filter(r=>r[1][i]).length;
+        return `<td class="heat-total" style="color:${n?'var(--mint)':'var(--red)'}">${n||'0'}</td>`}).join('')}
+    </tr>
+  </tfoot>
+</table>`;
+document.getElementById('heat').innerHTML=h;
+
+/* ─── gaps ─── */
+const gaps=[
+  ['Tenant isolation','CRITICAL','No journey asserts tenant A cannot reach tenant B\'s documents, chats, matrices or templates. A breach is a §203 StGB confidentiality incident.'],
+  ['Authentication / SSO','CRITICAL','Journeys presumably start logged in. Login, token expiry mid-session, IdP failure and permission boundaries are untested.'],
+  ['Session encryption','HIGH','A core product and certification claim. Nothing asserts content is unreadable without an active session, or that key rotation behaves.'],
+  ['Word Add-in','HIGH','Shipped surface with its own runtime. Shares the frontend repo but has no journey.'],
+  ['Voice service','HIGH','Two test files, no CI runs them, no journey. Untested shipped code.'],
+  ['Text extraction edges','HIGH','Journeys upload "a sample document". Scanned PDFs, OCR failures, 200-page files, corrupt and password-protected files are untested — and failure is invisible in the UI.'],
+  ['Redis / LECS TTL expiry','MEDIUM','State is TTL-expiring. What a user sees when state expires mid-conversation is unspecified.'],
+  ['Degraded paths','MEDIUM','LLM timeout, Elastic unavailable, GPU saturated, WireGuard down. These will happen in production.'],
+  ['Concurrency','MEDIUM','Two tabs one session, simultaneous editor edits, matrix column added during an in-flight reload.']
+];
+const sev={CRITICAL:'#D97070',HIGH:'#E8A33D',MEDIUM:'#C9B27A'};
+const gapOrder=['CRITICAL','HIGH','MEDIUM'];
+const gapBoard=`<div class="gap-board">
+  ${gapOrder.map(s=>{
+    const items=gaps.filter(g=>g[1]===s);
+    return `<div class="gap-col">
+      <div class="gap-head" style="background:${sev[s]}10;border-color:${sev[s]}30">
+        <span class="sev" style="color:${sev[s]}">${s}</span>
+        <span class="count">${items.length} gaps</span>
+      </div>
+      <div class="gap-list">
+        ${items.map(([t,_,d])=>`
+          <div class="gap-item rv" style="border-color:${sev[s]}25">
+            <div class="gap-title">
+              <h4 class="display font-semibold text-[15px] leading-snug">${t}</h4>
+              <span class="gap-pill" style="border-color:${sev[s]}40;color:${sev[s]}">${s}</span>
+            </div>
+            <p class="gap-desc">${d}</p>
+          </div>
+        `).join('')}
+      </div>
+    </div>`;
+  }).join('')}
+</div>`;
+document.getElementById('gaps').innerHTML=gapBoard;
+
+/* ─── ownership ─── */
+const qa=['Playwright framework, fixtures, tenant &amp; auth setup, CI wiring','Page Object Models and locators','Edge cases, negative paths, cross-browser, cross-tenant variants','Test tiering, tags, risk metadata','Journey specs — with product-owner sign-off','Exploratory sessions, time-boxed by risk','Accessibility and visual-regression checks'];
+const dv=['Unit tests for isolated logic','Integration tests at the relevant boundary','One happy-path journey test, using existing POMs','<span class="mono text-[11px]">data-testid</span> hooks the POM needs','Contract provider side — OpenAPI spec','A feature that is <em>usable</em>, not merely testable','UX states implemented, not just the success path'];
+const li=(a,c)=>a.map(x=>`<li class="flex gap-2.5"><span class="shrink-0 mt-[7px] w-1 h-1 rounded-full" style="background:${c}"></span><span style="color:#B9C9C8">${x}</span></li>`).join('');
+document.getElementById('qaOwns').innerHTML=li(qa,'#5FD3B4');
+document.getElementById('devOwns').innerHTML=li(dv,'#7FB0E8');
+
+/* ─── risk tiers ─── */
+const tiers=[
+  ['R1','Critical','#D97070','Legal or confidentiality exposure, cross-tenant data, auth, encryption, citation correctness','Tenant isolation · SSO · session encryption · citation-to-source mapping · upload integrity','Unit + integration + contract + E2E + cross-tenant variant + manual legal review + security negatives. Blocking pre-merge. No risk acceptance without written sign-off.'],
+  ['R2','High','#E8A33D','Core flows; failure blocks primary user work','Chat · editor · matrix · templates · RAG retrieval · Word Add-in','Unit + integration + E2E happy path + key negatives + AI eval where model-dependent. Blocking smoke pre-merge, medium post-merge.'],
+  ['R3','Medium','#C9B27A','Supporting features; a workaround exists','Rename · settings · preferences · export formatting · "Show more"','Unit + integration + one E2E happy path. Post-merge tier only.'],
+  ['R4','Low','#7E9A9E','Cosmetic, internal tooling, low blast radius','Tooltip copy · admin-panel layout · internal views','Unit where logic exists. Manual check. Automation default: no.']
+];
+document.getElementById('tiers').innerHTML=tiers.map(([id,n,c,def,ex,req])=>`
+<div class="rv rounded-xl border overflow-hidden" style="border-color:${c}30;background:var(--panel)">
+  <div class="grid md:grid-cols-[110px_1fr] gap-0">
+    <div class="p-5 flex flex-col items-center justify-center border-b md:border-b-0 md:border-r" style="border-color:${c}20;background:${c}0D">
+      <span class="display text-3xl font-bold" style="color:${c}">${id}</span>
+      <span class="mono text-[9px] uppercase tracking-widest mt-1" style="color:${c}">${n}</span>
+    </div>
+    <div class="p-5">
+      <p class="text-[14px] font-medium">${def}</p>
+      <p class="mono text-[11px] mt-2" style="color:var(--dim)">${ex}</p>
+      <p class="text-[12.5px] mt-3 leading-relaxed" style="color:var(--muted)"><span style="color:${c}">Required →</span> ${req}</p>
+    </div>
+  </div></div>`).join('');
+
+/* ─── ai gating ─── */
+const det=['Citation marker renders inline','Clicking a document citation opens the viewer, not the bento box','A response arrives within timeout','Response is non-empty and structurally well-formed','Yes/No answer maps to a known enum','Response contains ≥1 citation for a citation-requiring prompt'];
+const prob=['Whether the cited passage actually supports the claim','Whether retrieval returned the <em>right</em> documents','Answer quality, tone, completeness','Whether tool selection was correct','Grounding vs generic filler'];
+document.getElementById('det').innerHTML=li(det,'#5FD3B4');
+document.getElementById('prob').innerHTML=li(prob,'#C08BE8');
+
+/* ─── ux states ─── */
+const st=[['Empty','done'],['Over-long input','done'],['Cancel / abandon','done'],['Keyboard path','done'],['Loading / in-flight','todo'],['Error / failure','todo'],['Permission denied','todo'],['Degraded service','todo']];
+document.getElementById('states').innerHTML=`<div class="state-stepper">
+  ${st.map(([n,s])=>`
+    <div class="state-step ${s}">
+      <div class="t">${n}</div>
+      <div class="s">${s==='done'?'covered':'missing'}</div>
+    </div>
+  `).join('')}
+</div>`;
+
+/* ─── maintenance ─── */
+const profiles={
+  active:`profile: active
+
+  pre-merge:    "@r1 or (@r2 and @smoke)"
+  post-merge:   "@r1 or @r2"
+  nightly:      "all"
+  pre-release:  "all"
+  post-release: "all"`,
+  maintenance:`profile: maintenance
+
+  pre-merge:    "@r1"
+  post-merge:   "@r1 or (@r2 and @smoke)"
+  nightly:      "@r1 or @r2"        # was: all
+  weekly:       "all"               # new tier
+  pre-release:  "all"
+  post-release: "all"`};
+const deltas={
+  active:[['Primary goal','Catch regressions in new work'],['Flake tolerance','Low'],['Suite size','Growing'],['CI cost','Secondary concern'],['Full regression','Nightly + per tag'],['Exploratory','Per feature'],['Diagnoses failures','The author'],['Highest-value layer','E2E — behaviour changes often']],
+  maintenance:[['Primary goal','Detect regressions in unchanged work'],['Flake tolerance','Zero — nobody is watching'],['Suite size','Frozen or shrinking'],['CI cost','Primary — GPU evals are expensive'],['Full regression','Weekly + per release'],['Exploratory','Per release, time-boxed'],['Diagnoses failures','Someone unfamiliar with the code'],['Highest-value layer','Contract + integration — cheap, stable']]};
+function setProfile(p){
+  document.getElementById('prof').textContent=profiles[p];
+  document.getElementById('deltas').innerHTML=deltas[p].map(([k,v])=>`
+    <div class="flex gap-3 py-1.5 border-b" style="border-color:#23393E60">
+      <span class="mono text-[10.5px] w-36 shrink-0 pt-[2px]" style="color:var(--dim)">${k}</span>
+      <span style="color:${p==='maintenance'?'var(--amber)':'var(--chalk)'}">${v}</span></div>`).join('');
+  document.querySelectorAll('[data-p]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.p===p));
+}
+document.querySelectorAll('[data-p]').forEach(b=>b.addEventListener('click',()=>setProfile(b.dataset.p)));
+setProfile('active');
+
+const prep=[
+  ['Prune','Delete tests that never failed and cover R3/R4. Every retained test is a maintenance liability.'],
+  ['Stabilise','Drive flake under 1% on the retained suite. A flaky suite in maintenance gets ignored, then deleted.'],
+  ['Write the runbook','How to run each tier, read an Allure report, the five common failures and their fixes. Assume the reader has never seen the repo.'],
+  ['Freeze the contract layer','Get oasdiff working <em>before</em> maintenance. Contract tests become the best value-per-euro layer — no GPU cost, near-zero flake.'],
+  ['Cut AI eval cost','Define a reduced promptfoo dataset now and validate it still catches known regressions.'],
+  ['Snapshot the baseline','Record pass rates, coverage by tier, accepted risks. Without it the first failure is unattributable.']
+];
+document.getElementById('prep').innerHTML=prep.map(([t,d])=>`
+<div class="rv rounded-xl border p-5" style="border-color:var(--stroke);background:var(--panel)">
+  <h4 class="display font-semibold text-[15px] mb-2">${t}</h4>
+  <p class="text-[12.5px] leading-relaxed" style="color:var(--muted)">${d}</p></div>`).join('');
+
+/* ─── phases ─── */
+const phases=[
+  ['0','Fix what is broken','1–2 weeks','#D97070','No new tests. Highest value in the document.',
+   ['Resolve the gate contradiction — inspect the branch ruleset <span class="mono text-[11px]">(ALL-5476)</span>. Blocks everything else.','Add tests to the release-tag pipeline <span class="mono text-[11px]">(ALL-5480)</span> — it currently deploys with zero tests.','Wire up the voice service tests. Two files not running is a five-minute fix.','Define precisely what "verify the assistant response" asserts.','Publish the flake policy and quarantine anything already flaky.']],
+  ['1','Close the R1 hole','3–4 weeks','#E8A33D','The suite has no critical-tier coverage at all.',
+   ['Tenant isolation journey — highest-severity gap in the system.','Authentication / SSO journey, including token expiry and IdP failure.','Add <span class="mono text-[11px]">@r1…@r4</span> risk tags to all existing tests. Unlocks Phase 3.','oasdiff contract gate <span class="mono text-[11px]">(ALL-5478)</span>.','axe-core into existing journeys — one line each, large compliance return.']],
+  ['2','Roll out the model','4–6 weeks','#7FB0E8','Overlaps Phase 1.',
+   ['Publish DoR / dev-DoD / QA entry–exit, with management backing for QA\'s right to decline handover.','Invest in POM ergonomics until a dev can add a journey in under 30 minutes.','Adopt the QA team\'s traceability matrix in Allure TestOps — ready as drafted.','Test data hygiene: fixtures, janitor job, dedicated E2E tenants, nasty-document set.','Word Add-in journey. Text-extraction edge-case suite.','Visual regression baseline — 15–20 snapshots, nightly, non-blocking.','Confirm the real accessibility obligation with legal and sales.']],
+  ['3','Maintenance readiness','start before needed','#5FD3B4','Cheap now, expensive later.',
+   ['Profile config for tier selection.','Prune R3/R4 tests that never caught anything.','Drive flake under 1%.','Runbook for an unfamiliar reader.','Reduced AI eval dataset, validated.','Baseline snapshot of pass rates and coverage.','Flip the profile.']]
+];
+document.getElementById('phases').innerHTML=phases.map(([n,t,d,c,sub,items],i)=>`
+<div class="rv grid md:grid-cols-[70px_1fr] gap-6 pb-12 ${i<phases.length-1?'border-l-2 ml-[34px] md:ml-0':''}" style="border-color:var(--stroke)">
+  <div class="flex md:flex-col items-center md:items-end gap-3 md:gap-1 ${i<phases.length-1?'-ml-[36px] md:ml-0':''}">
+    <div class="w-[68px] h-[68px] rounded-xl border-2 flex items-center justify-center shrink-0"
+         style="border-color:${c};background:var(--ground)">
+      <span class="display text-2xl font-bold" style="color:${c}">${n}</span>
+    </div>
+    <span class="mono text-[9px] uppercase tracking-wider text-center md:text-right" style="color:var(--dim)">${d}</span>
+  </div>
+  <div class="pt-1">
+    <h3 class="display text-xl font-bold">${t}</h3>
+    <p class="text-[13px] mt-1 mb-4" style="color:${c}">${sub}</p>
+    <ul class="space-y-2 text-[13px]">
+      ${items.map(x=>`<li class="flex gap-2.5"><span class="shrink-0 mt-[7px] w-1 h-1 rounded-full" style="background:${c}"></span><span style="color:#B9C9C8">${x}</span></li>`).join('')}
+    </ul>
+  </div></div>`).join('');
+
+/* ─── metrics ─── */
+const met=[
+  ['Escape rate — prod bugs / total found','Trend down','Is shift-left working?'],
+  ['Escaped-bug layer attribution','Majority "unit" → push down','Where to invest next'],
+  ['Flake rate on gating tests','&lt;1%','Is the gate trustworthy?'],
+  ['Pre-merge feedback time','&lt;15 min','Is the gate tolerable?'],
+  ['R1 coverage completeness','100%','Release go / no-go'],
+  ['QA handover rejection rate','Trend down after Phase 2','Is the DoD respected?'],
+  ['CI cost per week','Flat or down in maintenance','Maintenance sustainability'],
+  ['Time to diagnose, unfamiliar engineer','&lt;30 min','Maintenance readiness']
+];
+document.getElementById('metrics').innerHTML=met.map(([a,b,c],i)=>`
+<tr style="background:${i%2?'transparent':'#0F1D2080'}">
+  <td class="px-5 py-3" style="color:var(--chalk)">${a}</td>
+  <td class="px-5 py-3 mono text-[11px]" style="color:var(--mint)">${b}</td>
+  <td class="px-5 py-3" style="color:var(--muted)">${c}</td></tr>`).join('');
+
+/* ─── open questions ─── */
+const oq=['Is E2E actually a required PR check? The single most important question here.','Do the journeys start from an authenticated state, and how?','What exactly does "verify the assistant response" assert?','Is there any tenant dimension in the current journeys?','Are design tokens generated from Figma or hand-maintained?','What is the actual accessibility obligation, and has a VPAT been committed to any customer?','When does maintenance start, and with what headcount?','Which environment do PR-gating journeys run against?'];
+document.getElementById('oq').innerHTML=oq.map((q,i)=>`
+<li class="flex gap-3"><span class="mono text-[11px] shrink-0" style="color:var(--amber)">${String(i+1).padStart(2,'0')}</span>
+<span style="color:#B9C9C8">${q}</span></li>`).join('');
+
+/* ─── scroll reveal + rail ─── */
+const io=new IntersectionObserver(e=>e.forEach(x=>x.isIntersecting&&x.target.classList.add('in')),{threshold:.12});
+document.querySelectorAll('.rv').forEach(e=>io.observe(e));
+
+const secs=[...document.querySelectorAll('section[id],header[id]')];
+const links=[...document.querySelectorAll('.rail a')];
+const io2=new IntersectionObserver(e=>e.forEach(x=>{
+  if(x.isIntersecting){links.forEach(l=>l.classList.toggle('act',l.getAttribute('href')==='#'+x.target.id))}
+}),{rootMargin:'-45% 0px -50% 0px'});
+secs.forEach(s=>io2.observe(s));
+</script>
+</body>
+</html>
